@@ -1,0 +1,6 @@
+discord.py
+pillow
+pyfiglet
+requests
+python-dotenv
+aiohttp
