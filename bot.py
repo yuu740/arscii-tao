@@ -6,14 +6,13 @@ import requests
 import pyfiglet
 from discord import app_commands
 from discord.ext import commands
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont
 from dotenv import load_dotenv
 
 # --- Load Token dari File .env ---
 load_dotenv()
 DISCORD_TOKEN = os.getenv('DISCORD_TOKEN')
 
-# Inisialisasi Bot dengan Client standar untuk Slash Commands
 class MyBot(commands.Bot):
     def __init__(self):
         intents = discord.Intents.default()
@@ -22,199 +21,258 @@ class MyBot(commands.Bot):
 
     async def setup_hook(self):
         await self.tree.sync()
-        print("🔀 Slash Commands berhasil disinkronisasi global!")
+        print("🔀 Semua Slash Commands ASCII Teks Berhasil Disinkronisasi!")
 
 bot = MyBot()
 
-# Kumpulan karakter untuk konversi gambar & GIF (70 karakter untuk detail maksimal)
-ASCII_CHARS = ["$", "@", "B", "%", "8", "&", "W", "M", "#", "*", "o", "a", "h", "k", "b", "d", "p", "q", "w", "m", "Z", "O", "0", "Q", "L", "C", "J", "U", "Y", "X", "z", "c", "v", "u", "n", "x", "r", "j", "f", "t", "/", "\\", "|", "(", ")", "1", "{", "}", "[", "]", "?", "-", "_", "+", "~", "<", ">", "i", "!", "l", "I", ";", ":", ",", '"', "^", "`", "'", ".", " "]
+# Kumpulan karakter teks murni untuk gradasi HD (Dari paling gelap ke paling terang)
+# Menggunakan variasi karakter asli agar tekstur seninya terlihat jelas
+ASCII_CHARS = ["@", "#", "W", "M", "B", "8", "&", "q", "w", "m", "k", "b", "d", "p", "o", "a", "h", "*", "O", "0", "Z", "X", "U", "C", "L", "Q", "v", "c", "u", "n", "x", "r", "j", "f", "t", "/", "\\", "|", "(", ")", "1", "{", "}", "[", "]", "?", "-", "_", "+", "~", "<", ">", "i", "!", "l", "I", ";", ":", ",", '"', "^", "`", "'", ".", " ", " "]
 
-# --- UTILITY FUNCTIONS UNTUK FOTO & GIF ---
-def resize_image(image, new_width=50):
-    width, height = image.size
-    ratio = height / width
-    new_height = int(new_width * ratio * 0.5)
-    return image.resize((new_width, new_height))
+# Font untuk merender text ke format GIF bergerak
+try:
+    FONT_ENGRAVER = ImageFont.truetype("cour.ttf", 10) # Menggunakan Courier New ukuran kecil agar tajam
+except:
+    FONT_ENGRAVER = ImageFont.load_default()
 
-def grayify(image):
-    return image.convert("L")
-
-def pixels_to_ascii(image):
-    pixels = image.getdata()
+# --- UTILITY FUNCTIONS ---
+def convert_to_text_ascii(img_data, target_width=60):
+    w, h = img_data.size
+    # Aspek rasio 0.55 untuk menyeimbangkan tinggi font monospace agar gambar tidak lonjong
+    target_height = int(target_width * (h / w) * 0.55)
+    img_data = img_data.resize((target_width, target_height)).convert("L")
+    
+    pixels = img_data.getdata()
     num_chars = len(ASCII_CHARS)
-    characters = "".join([ASCII_CHARS[int((pixel / 255) * (num_chars - 1))] for pixel in pixels])
-    return characters
+    
+    # Memetakan nilai kepekatan warna pixel ke karakter teks asli
+    ascii_str = "".join([ASCII_CHARS[int((p / 255) * (num_chars - 1))] for p in pixels])
+    
+    lines = [ascii_str[i:(i + target_width)] for i in range(0, len(ascii_str), target_width)]
+    return lines
+
+def create_gif_from_ascii_lines(all_frames_lines, width_chars, height_chars, bg_color="black", text_color="green"):
+    # Menggambar baris teks ASCII asli ke dalam frame kanvas gambar secara presisi
+    char_w, char_h = 6, 10
+    img_w = width_chars * char_w + 10
+    img_h = height_chars * char_h + 10
+    
+    gif_frames = []
+    for lines in all_frames_lines:
+        frame_img = Image.new("RGB", (img_w, img_h), color=bg_color)
+        draw = ImageDraw.Draw(frame_img)
+        
+        y_offset = 5
+        for line in lines:
+            # Menggambar per karakter teks murni ke file gambar animasi
+            draw.text((5, y_offset), line, fill=text_color, font=FONT_ENGRAVER)
+            y_offset += char_h
+            
+        gif_frames.append(frame_img)
+        
+    out_stream = io.BytesIO()
+    if gif_frames:
+        gif_frames[0].save(
+            out_stream, format="GIF", save_all=True,
+            append_images=gif_frames[1:], duration=120, loop=0
+        )
+    out_stream.seek(0)
+    return out_stream
 
 
-# ==================== FITUR 1: IMAGE TO ASCII (/ascii_image) ====================
-@bot.tree.command(name="ascii_image", description="Ubah fotomu menjadi seni teks ASCII yang estetik!")
+# ==================== FITUR 1: HD IMAGE TO ASCII TEXT ====================
+@bot.tree.command(name="ascii_image", description="Ubah fotomu menjadi seni teks ASCII murni bergaya HD!")
 @app_commands.describe(gambar="Lampirkan foto yang ingin kamu ubah")
 async def ascii_image(interaction: discord.Interaction, gambar: discord.Attachment):
+    # Langsung jalankan respon instan agar bebas dari error "application did not respond"
+    await interaction.response.defer(ephemeral=False)
+
     if not gambar.content_type or not gambar.content_type.startswith("image/"):
-        await interaction.response.send_message("❌ File yang kamu lampirkan harus berupa gambar (PNG/JPG)!", ephemeral=True)
+        await interaction.followup.send("❌ File harus berupa gambar!")
         return
 
-    await interaction.response.send_message("🎨 *Sedang memahat gambarmu menjadi teks...*")
-
     try:
-        response = requests.get(gambar.url)
-        img = Image.open(io.BytesIO(response.content))
-
-        img = resize_image(img)
-        img = grayify(img)
+        res = requests.get(gambar.url)
+        img = Image.open(io.BytesIO(res.content))
         
-        ascii_str = pixels_to_ascii(img)
-        img_width = img.width
-        
-        lines = [ascii_str[i:(i + img_width)] for i in range(0, len(ascii_str), img_width)]
+        # Menggunakan lebar 65 karakter teks agar gambarnya padat dan beresolusi tinggi
+        lines = convert_to_text_ascii(img, target_width=65)
         
         safe_lines = []
-        current_length = 0
-        is_truncated = False
-
+        curr_len = 0
         for line in lines:
-            clean_line = line.replace("`", "'") 
-            if current_length + len(clean_line) + 1 > 1850: 
-                is_truncated = True
+            clean_line = line.replace("`", "'") # Proteksi formatting chat Discord
+            if curr_len + len(clean_line) + 1 > 1850:
                 break
             safe_lines.append(clean_line)
-            current_length += len(clean_line) + 1
-
-        ascii_img = "\n".join(safe_lines)
-        if is_truncated:
-            ascii_img += "\n... (sisa gambar dipotong agar tidak meledakkan limit Discord)"
-
-        await interaction.edit_original_response(content=f"```\n{ascii_img}\n```")
-        
-    except Exception as e:
-        await interaction.edit_original_response(content=f"❌ Gagal memproses gambar. Error: {e}")
-
-
-# ==================== FITUR 2: TEXT TO BANNER (/ascii_banner) ====================
-@bot.tree.command(name="ascii_banner", description="Ubah teks biasa menjadi spanduk teks ASCII besar yang keren!")
-@app_commands.describe(teks="Tulis kata yang ingin diubah (Alfabet/Angka)", font="Pilih gaya tulisan ASCII")
-@app_commands.choices(font=[
-    app_commands.Choice(name="Standard Retro", value="standard"),
-    app_commands.Choice(name="Slant (Miring)", value="slant"),
-    app_commands.Choice(name="3D-Diagonal", value="3d_diagonal"),
-    app_commands.Choice(name="Bubbles (Bulat)", value="bubbles")
-])
-async def ascii_banner(interaction: discord.Interaction, teks: str, font: str = "standard"):
-    await interaction.response.defer()
-    
-    try:
-        fig = pyfiglet.Figlet(font=font)
-        banner_result = fig.renderText(teks)
-        banner_result = banner_result.replace("`", "'")
-        
-        if len(banner_result) > 1900:
-            await interaction.followup.send("❌ Teks terlalu panjang atau pilihan font terlalu besar untuk chat Discord!")
-            return
+            curr_len += len(clean_line) + 1
             
-        await interaction.followup.send(f"```\n{banner_result}\n```")
+        ascii_img = "\n".join(safe_lines)
+        await interaction.followup.send(f"```\n{ascii_img}\n```")
+    except Exception as e:
+        await interaction.followup.send(f"❌ Gagal memproses gambar. Error: {e}")
+
+
+# ==================== FITUR 2: TEXT TO BANNER ====================
+@bot.tree.command(name="ascii_banner", description="Ubah teks biasa menjadi spanduk teks ASCII besar dengan variasi gaya!")
+@app_commands.describe(teks="Tulis kata bebas", gaya="Pilih bentuk/gaya seni karakter teks")
+@app_commands.choices(gaya=[
+    app_commands.Choice(name="Retro Standard", value="standard"),
+    app_commands.Choice(name="Slant (Miring Keren)", value="slant"),
+    app_commands.Choice(name="Doom (Gaya Game Blok)", value="doom"),
+    app_commands.Choice(name="Block (Kotak Rapi)", value="block"),
+    app_commands.Choice(name="Bubbles (Lingkaran Bulat)", value="bubbles")
+])
+async def ascii_banner(interaction: discord.Interaction, teks: str, gaya: str = "standard"):
+    await interaction.response.defer(ephemeral=False)
+    try:
+        fig = pyfiglet.Figlet(font=gaya)
+        banner = fig.renderText(teks).replace("`", "'")
+        
+        if len(banner) > 1900:
+            await interaction.followup.send("❌ Struktur teks terlalu raksasa untuk kotak chat Discord!")
+            return
+        await interaction.followup.send(f"```\n{banner}\n```")
     except Exception as e:
         await interaction.followup.send(f"❌ Gagal membuat banner teks. Error: {e}")
 
 
-# ==================== FITUR 3: GIF TO ASCII FILE (/ascii_gif) ====================
-@bot.tree.command(name="ascii_gif", description="Ubah animasi GIF menjadi file teks (.txt) berisi tumpukan frame ASCII!")
-@app_commands.describe(gif_file="Lampirkan file animasi GIF yang ingin dikonversi")
+# ==================== FITUR 3: GIF TO TEXT MOVING ANIMATION ====================
+@bot.tree.command(name="ascii_gif", description="Ubah animasi GIF menjadi animasi GIF teks ASCII murni yang bergerak!")
+@app_commands.describe(gif_file="Lampirkan file animasi GIF")
 async def ascii_gif(interaction: discord.Interaction, gif_file: discord.Attachment):
+    await interaction.response.defer(ephemeral=False)
+
     if not gif_file.content_type or "gif" not in gif_file.content_type:
-        await interaction.response.send_message("❌ File yang dilampirkan wajib berupa animasi GIF!", ephemeral=True)
+        await interaction.followup.send("❌ File wajib berformat animasi GIF!")
         return
 
-    await interaction.response.defer()
-    await interaction.followup.send("🎞️ *Sedang memecah frame GIF dan merajutnya menjadi text art lokal...*")
-
     try:
-        response = requests.get(gif_file.url)
-        gif = Image.open(io.BytesIO(response.content))
+        res = requests.get(gif_file.url)
+        gif = Image.open(io.BytesIO(res.content))
         
-        output_text = "=== MAHA KARYA ANIMASI ASCII ===\n"
-        output_text += f"Nama File: {gif_file.filename}\n"
-        output_text += "Tips: Matikan 'Word Wrap' di Notepad komputer kamu agar bentuk gambarnya rapi!\n"
-        output_text += "================================\n\n"
-        
-        frame_number = 1
+        all_frames_lines = []
+        w_chars, h_chars = 0, 0
+        frame_count = 0
         
         try:
             while True:
                 frame = gif.copy()
-                frame = resize_image(frame, new_width=45)
-                frame = grayify(frame)
+                # Merender frame menggunakan sekumpulan karakter teks asli secara rapat
+                lines = convert_to_text_ascii(frame, target_width=52)
                 
-                ascii_str = pixels_to_ascii(frame)
-                img_width = frame.width
-                ascii_frame = "\n".join([ascii_str[i:(i + img_width)] for i in range(0, len(ascii_str), img_width)])
+                w_chars = len(lines[0])
+                h_chars = len(lines)
+                all_frames_lines.append(lines)
                 
-                output_text += f"[ FRAME {frame_number} ]\n"
-                output_text += ascii_frame + "\n"
-                output_text += "-" * img_width + "\n\n"
-                
-                frame_number += 1
-                if frame_number > 40:
-                    output_text += "... (Frame dibatasi hingga 40 frame terdepan demi ukuran file)\n"
+                frame_count += 1
+                if frame_count >= 20: # Dibatasi 20 frame agar proses render tidak kena timeout
                     break
-                    
                 gif.seek(gif.tell() + 1)
         except EOFError:
             pass
 
-        text_stream = io.BytesIO(output_text.encode('utf-8'))
-        discord_file = discord.File(fp=text_stream, filename="animasi_ascii_art.txt")
+        # Membuat gambar GIF bergerak baru berlatar belakang putih dengan tulisan teks hitam (seperti koran digital)
+        gif_stream = create_gif_from_ascii_lines(all_frames_lines, w_chars, h_chars, bg_color="white", text_color="black")
+        file_discord = discord.File(fp=gif_stream, filename="animasi_ascii_text.gif")
         
-        await interaction.followup.send("✅ Pemrosesan GIF selesai! Silakan unduh file teks mahakaryamu di bawah ini:", file=discord_file)
-        
+        await interaction.followup.send("✅ Animasi GIF Karakter Teks ASCII berhasil dibuat:", file=file_discord)
     except Exception as e:
-        await interaction.followup.send(f"❌ Gagal memproses file GIF. Error: {e}")
+        await interaction.followup.send(f"❌ Gagal memproses animasi GIF. Error: {e}")
 
 
-# ==================== FITUR 4: THE MATRIX CODE RAIN (/ascii_matrix) ====================
-@bot.tree.command(name="ascii_matrix", description="Hasilkan rontokan kode digital acak ala film The Matrix!")
+# ==================== FITUR 4: UNLIMITED MOVING MATRIX CODES ====================
+@bot.tree.command(name="ascii_matrix", description="Hasilkan animasi hujan kode digital bergerak tanpa batas waktu (Unlimited Looping)!")
 async def ascii_matrix(interaction: discord.Interaction):
-    await interaction.response.defer()
+    await interaction.response.defer(ephemeral=False)
     
-    # Karakter fiksi ilmiah khas Matrix (Katakana, Angka, Binari, Simbol)
-    matrix_pool = ["0", "1", "X", "Z", "A", "V", "7", "3", " ", " ", " ", "¦", "§", "¶", "±", "×", "Ø", "Ξ", "Ψ", "Ω", "ｦ", "ｧ", "ｨ", "ｩ", "ｪ", "ｫ", "ｬ", "ｭ", "ｮ", "ｯ", "ｰ", "ｱ", "ｲ", "ｳ", "ｴ", "ｵ", "ｶ", "ｷ", "ｸ", "ｹ", "ｺ", "ｻ"]
+    pool = ["0", "1", "X", "7", "Ø", "Ψ", "ｦ", "ｧ", "ｨ", "ｳ", "ｶ", "ｷ", "ｹ", " ", " ", " "]
+    cols, rows = 45, 22
     
-    # Menentukan dimensi matriks teks (Lebar 35 kolom x Tinggi 24 baris agar pas di layar Discord mobile/desktop)
-    cols = 35
-    rows = 24
+    streams = [{"start": random.randint(-15, 0), "len": random.randint(6, 15)} for _ in range(cols)]
+    all_frames_lines = []
     
-    # Menyiapkan rute/jalur drop hujan kode secara acak untuk setiap kolom
-    # Setiap kolom punya panjang rontokan dan titik mulai yang berbeda
-    streams = []
-    for _ in range(cols):
-        start_row = random.randint(-20, 0) # Memulai di atas layar agar efek rontoknya natural
-        length = random.randint(5, 18)     # Panjang aliran kode hijau ke bawah
-        streams.append({"start": start_row, "len": length})
-        
-    grid = []
-    for r in range(rows):
-        row_chars = []
-        for c in range(cols):
-            stream = streams[c]
-            # Cek apakah koordinat saat ini berada di dalam jangkauan rontokan kode
-            if stream["start"] <= r <= (stream["start"] + stream["len"]):
-                # Karakter utama paling bawah dibuat lebih mencolok (kita beri karakter tebal)
-                if r == (stream["start"] + stream["len"]):
-                    row_chars.append(random.choice(["#", "@", "W", "8"]))
+    for frame_idx in range(18):
+        grid = []
+        for r in range(rows):
+            row_chars = []
+            for c in range(cols):
+                stream = streams[c]
+                curr_start = stream["start"] + frame_idx
+                if curr_start <= r <= (curr_start + stream["len"]):
+                    if r == (curr_start + stream["len"]):
+                        row_chars.append("@")
+                    else:
+                        row_chars.append(random.choice(pool))
                 else:
-                    row_chars.append(random.choice(matrix_pool))
-            else:
-                row_chars.append(" ") # Beri spasi kosong jika tidak ada aliran kode
-        grid.append(" ".join(row_chars)) # Beri spasi antar kolom agar efeknya renggang estetik
+                    row_chars.append(" ")
+            grid.append("".join(row_chars))
+        all_frames_lines.append(grid)
 
-    matrix_art = "\n".join(grid)
+    gif_stream = create_gif_from_ascii_lines(all_frames_lines, cols, rows, bg_color="black", text_color="#00FF00")
+    file_matrix = discord.File(fp=gif_stream, filename="matrix_rain.gif")
     
-    await interaction.followup.send(f"🌐 **[ MATRIX DIGITAL INTRUSION DETECTED ]**\n```\n{matrix_art}\n```")
+    await interaction.followup.send("🌐 **[ SYSTEM INTRUSION DETECTED — UNLIMITED CODE RAIN LOOP ]**", file=file_matrix)
 
 
-# --- Event saat bot berhasil online ---
-@bot.event
-async def on_ready():
-    print(f"✅ Bot Berhasil Online sebagai {bot.user.name}!")
+# ==================== FITUR 5: AUTOMATIC DETECT AVATAR PFP ====================
+@bot.tree.command(name="ascii_pfp", description="Ambil profil user, otomatis ubah ke format teks ASCII HD (Mendukung Foto & GIF)!")
+@app_commands.describe(user="Pilih pengguna (Kosongkan jika ingin profil diri sendiri)")
+async def ascii_pfp(interaction: discord.Interaction, user: discord.User = None):
+    await interaction.response.defer(ephemeral=False)
+    target_user = user if user else interaction.user
+    
+    pfp_url = target_user.display_avatar.url
+    is_gif = ".gif" in pfp_url.lower() or (target_user.display_avatar.is_animated())
+
+    if is_gif:
+        try:
+            res = requests.get(pfp_url)
+            gif = Image.open(io.BytesIO(res.content))
+            all_frames_lines = []
+            w_chars, h_chars = 0, 0
+            frame_count = 0
+            
+            try:
+                while True:
+                    frame = gif.copy()
+                    lines = convert_to_text_ascii(frame, target_width=52)
+                    w_chars = len(lines[0])
+                    h_chars = len(lines)
+                    all_frames_lines.append(lines)
+                    frame_count += 1
+                    if frame_count >= 20:
+                        break
+                    gif.seek(gif.tell() + 1)
+            except EOFError:
+                pass
+
+            gif_stream = create_gif_from_ascii_lines(all_frames_lines, w_chars, h_chars, bg_color="white", text_color="black")
+            file_discord = discord.File(fp=gif_stream, filename=f"pfp_text_{target_user.name}.gif")
+            await interaction.followup.send(content=f"🎞️ Seni Avatar Teks Bergerak untuk **{target_user.name}**:", file=file_discord)
+        except Exception as e:
+            await interaction.followup.send(f"❌ Gagal memproses animasi PFP. Error: {e}")
+            
+    else:
+        try:
+            res = requests.get(pfp_url)
+            img = Image.open(io.BytesIO(res.content))
+            lines = convert_to_text_ascii(img, target_width=65)
+            
+            safe_lines = []
+            curr_len = 0
+            for line in lines:
+                clean_line = line.replace("`", "'")
+                if curr_len + len(clean_line) + 1 > 1850:
+                    break
+                safe_lines.append(clean_line)
+                curr_len += len(clean_line) + 1
+                
+            ascii_img = "\n".join(safe_lines)
+            await interaction.followup.send(f"👤 Seni Profil Teks ASCII untuk **{target_user.name}**:\n```\n{ascii_img}\n```")
+        except Exception as e:
+            await interaction.followup.send(f"❌ Gagal mengubah PFP gambar. Error: {e}")
+
 
 # --- Jalankan Bot ---
 bot.run(DISCORD_TOKEN)
