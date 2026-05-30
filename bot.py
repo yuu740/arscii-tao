@@ -29,6 +29,7 @@ class BadakBypassBot(commands.Bot):
 
     async def setup_hook(self):
         # 1. Memaksa internal library aiohttp menggunakan DNS Google & Cloudflare secara agresif
+        # Menggunakan kombinasi aiodns + dnspython dari requirements.txt
         resolver = aiohttp.AsyncResolver(nameservers=["8.8.8.8", "1.1.1.1"])
         connector = aiohttp.TCPConnector(resolver=resolver, use_dns_cache=False)
         
@@ -41,11 +42,15 @@ class BadakBypassBot(commands.Bot):
                 # Melewati utils/utility agar tidak ikut terdaftar sebagai command
                 if "util" in filename:
                     continue
-                await self.load_extension(f'cogs.{filename[:-3]}')
+                try:
+                    await self.load_extension(f'cogs.{filename[:-3]}')
+                    print(f"📦 Berhasil memuat modul: {filename}", flush=True)
+                except Exception as extension_error:
+                    print(f"❌ Gagal memuat modul {filename}. Error: {extension_error}", flush=True)
         
         # 3. Sinkronisasi struktur Slash Command ke Discord
         await self.tree.sync()
-        print("🔀 Seluruh Modul Fitur ASCII Cog Berhasil Disinkronisasi via Bypass Connector!", flush=True)
+        print("🔀 Seluruh Modul Fitur ASCII Cog Berhasil Disinkronisasi Global!", flush=True)
 
 bot = BadakBypassBot()
 
@@ -80,32 +85,21 @@ def jalankan_server_palsu():
 
 
 # =====================================================================
-# LOGIKA REKONEKSI AMAN DENGAN MEMBERSIHKAN SESI HTTP SEBELUMNYA
+# STRATEGI EKSEKUSI UTAMA (MENGANDALKAN AUTO-RECONNECT INTERNAL)
 # =====================================================================
-async def start_bot_dengan_retry():
-    while True:
-        try:
-            print("🔄 Mencoba mengetuk pintu server Discord...", flush=True)
-            await bot.start(DISCORD_TOKEN)
-        except Exception as e:
-            print(f"⚠️ Gagal connect karena blokir/delay jaringan ({e}). Mengulang dalam 10 detik...", flush=True)
-            
-            if not bot.is_closed():
-                await bot.close()
-                
-            await asyncio.sleep(10)
-
 async def main():
+    # Jalankan Fake Web Server di thread terpisah (background daemon)
     threading.Thread(target=jalankan_server_palsu, daemon=True).start()
     
-    try:
-        await start_bot_dengan_retry()
-    except KeyboardInterrupt:
-        if not bot.is_closed():
-            await bot.close()
+    # Biarkan discord.py menangani siklus hidup koneksi & retry internalnya sendiri secara kokoh
+    async with bot:
+        print("🔄 Memulai proses autentikasi token ke gateway Discord...", flush=True)
+        await bot.start(DISCORD_TOKEN)
 
 if __name__ == "__main__":
     try:
         asyncio.run(main())
+    except KeyboardInterrupt:
+        print("🛑 Proses bot dihentikan secara manual.", flush=True)
     except Exception as e:
         print(f"❌ Eror fatal luar pada sistem bot: {e}", flush=True)
