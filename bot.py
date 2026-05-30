@@ -1,5 +1,6 @@
 import os
 import io
+import random
 import discord
 import requests
 import pyfiglet
@@ -99,18 +100,13 @@ async def ascii_image(interaction: discord.Interaction, gambar: discord.Attachme
     app_commands.Choice(name="Bubbles (Bulat)", value="bubbles")
 ])
 async def ascii_banner(interaction: discord.Interaction, teks: str, font: str = "standard"):
-    # Gunakan defer agar aman dari kendala delay pengiriman Discord
     await interaction.response.defer()
     
     try:
-        # Membuat seni teks menggunakan pyfiglet secara lokal
         fig = pyfiglet.Figlet(font=font)
         banner_result = fig.renderText(teks)
-        
-        # Bersihkan karakter backtick jika ada agar tidak merusak format codeblock Discord
         banner_result = banner_result.replace("`", "'")
         
-        # Validasi limit 2000 karakter Discord
         if len(banner_result) > 1900:
             await interaction.followup.send("❌ Teks terlalu panjang atau pilihan font terlalu besar untuk chat Discord!")
             return
@@ -124,7 +120,6 @@ async def ascii_banner(interaction: discord.Interaction, teks: str, font: str = 
 @bot.tree.command(name="ascii_gif", description="Ubah animasi GIF menjadi file teks (.txt) berisi tumpukan frame ASCII!")
 @app_commands.describe(gif_file="Lampirkan file animasi GIF yang ingin dikonversi")
 async def ascii_gif(interaction: discord.Interaction, gif_file: discord.Attachment):
-    # Validasi apakah file beneran GIF
     if not gif_file.content_type or "gif" not in gif_file.content_type:
         await interaction.response.send_message("❌ File yang dilampirkan wajib berupa animasi GIF!", ephemeral=True)
         return
@@ -133,7 +128,6 @@ async def ascii_gif(interaction: discord.Interaction, gif_file: discord.Attachme
     await interaction.followup.send("🎞️ *Sedang memecah frame GIF dan merajutnya menjadi text art lokal...*")
 
     try:
-        # Ambil file GIF dari Discord
         response = requests.get(gif_file.url)
         gif = Image.open(io.BytesIO(response.content))
         
@@ -144,46 +138,77 @@ async def ascii_gif(interaction: discord.Interaction, gif_file: discord.Attachme
         
         frame_number = 1
         
-        # Melakukan looping ekstraksi frame GIF menggunakan Pillow secara lokal
         try:
             while True:
-                # Copy frame aktif saat ini
                 frame = gif.copy()
-                # Proses frame (Resize ke lebar 45 agar muat di notepad standar & ubah ke hitam putih)
                 frame = resize_image(frame, new_width=45)
                 frame = grayify(frame)
                 
-                # Konversi pixel frame ke karakter teks
                 ascii_str = pixels_to_ascii(frame)
                 img_width = frame.width
                 ascii_frame = "\n".join([ascii_str[i:(i + img_width)] for i in range(0, len(ascii_str), img_width)])
                 
-                # Susun ke dalam variabel teks raksasa
                 output_text += f"[ FRAME {frame_number} ]\n"
                 output_text += ascii_frame + "\n"
                 output_text += "-" * img_width + "\n\n"
                 
                 frame_number += 1
-                # Batasi maksimal 40 frame agar ukuran file teks tidak terlalu membengkak
                 if frame_number > 40:
                     output_text += "... (Frame dibatasi hingga 40 frame terdepan demi ukuran file)\n"
                     break
                     
-                # Berpindah ke frame GIF berikutnya
                 gif.seek(gif.tell() + 1)
         except EOFError:
-            # Loop akan otomatis berhenti ke sini jika frame GIF asli memang sudah habis
             pass
 
-        # Mengubah string teks menjadi file virtual di memori RAM (.txt) tanpa mengotori harddisk
         text_stream = io.BytesIO(output_text.encode('utf-8'))
         discord_file = discord.File(fp=text_stream, filename="animasi_ascii_art.txt")
         
-        # Kirim file .txt ke channel Discord
         await interaction.followup.send("✅ Pemrosesan GIF selesai! Silakan unduh file teks mahakaryamu di bawah ini:", file=discord_file)
         
     except Exception as e:
         await interaction.followup.send(f"❌ Gagal memproses file GIF. Error: {e}")
+
+
+# ==================== FITUR 4: THE MATRIX CODE RAIN (/ascii_matrix) ====================
+@bot.tree.command(name="ascii_matrix", description="Hasilkan rontokan kode digital acak ala film The Matrix!")
+async def ascii_matrix(interaction: discord.Interaction):
+    await interaction.response.defer()
+    
+    # Karakter fiksi ilmiah khas Matrix (Katakana, Angka, Binari, Simbol)
+    matrix_pool = ["0", "1", "X", "Z", "A", "V", "7", "3", " ", " ", " ", "¦", "§", "¶", "±", "×", "Ø", "Ξ", "Ψ", "Ω", "ｦ", "ｧ", "ｨ", "ｩ", "ｪ", "ｫ", "ｬ", "ｭ", "ｮ", "ｯ", "ｰ", "ｱ", "ｲ", "ｳ", "ｴ", "ｵ", "ｶ", "ｷ", "ｸ", "ｹ", "ｺ", "ｻ"]
+    
+    # Menentukan dimensi matriks teks (Lebar 35 kolom x Tinggi 24 baris agar pas di layar Discord mobile/desktop)
+    cols = 35
+    rows = 24
+    
+    # Menyiapkan rute/jalur drop hujan kode secara acak untuk setiap kolom
+    # Setiap kolom punya panjang rontokan dan titik mulai yang berbeda
+    streams = []
+    for _ in range(cols):
+        start_row = random.randint(-20, 0) # Memulai di atas layar agar efek rontoknya natural
+        length = random.randint(5, 18)     # Panjang aliran kode hijau ke bawah
+        streams.append({"start": start_row, "len": length})
+        
+    grid = []
+    for r in range(rows):
+        row_chars = []
+        for c in range(cols):
+            stream = streams[c]
+            # Cek apakah koordinat saat ini berada di dalam jangkauan rontokan kode
+            if stream["start"] <= r <= (stream["start"] + stream["len"]):
+                # Karakter utama paling bawah dibuat lebih mencolok (kita beri karakter tebal)
+                if r == (stream["start"] + stream["len"]):
+                    row_chars.append(random.choice(["#", "@", "W", "8"]))
+                else:
+                    row_chars.append(random.choice(matrix_pool))
+            else:
+                row_chars.append(" ") # Beri spasi kosong jika tidak ada aliran kode
+        grid.append(" ".join(row_chars)) # Beri spasi antar kolom agar efeknya renggang estetik
+
+    matrix_art = "\n".join(grid)
+    
+    await interaction.followup.send(f"🌐 **[ MATRIX DIGITAL INTRUSION DETECTED ]**\n```\n{matrix_art}\n```")
 
 
 # --- Event saat bot berhasil online ---
