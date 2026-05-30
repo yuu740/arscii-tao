@@ -1,5 +1,4 @@
 import os
-import io
 import asyncio
 import threading
 import discord
@@ -13,7 +12,6 @@ load_dotenv()
 DISCORD_TOKEN = os.getenv('DISCORD_TOKEN')
 
 if not DISCORD_TOKEN:
-    # Jika dideploy di HF, rahasia (Secret) dibaca dari jalur file enkripsi ini
     jalur_secret_hf = "/space_secrets/DISCORD_TOKEN"
     if os.path.exists(jalur_secret_hf):
         with open(jalur_secret_hf, "r") as f:
@@ -30,23 +28,23 @@ class BadakBypassBot(commands.Bot):
 
     async def setup_hook(self):
         # 1. Memaksa internal library aiohttp menggunakan DNS Google & Cloudflare secara agresif
+        # Membutuhkan paket 'aiodns' yang sudah kita tambahkan ke requirements.txt
         resolver = aiohttp.AsyncResolver(nameservers=["8.8.8.8", "1.1.1.1"])
         connector = aiohttp.TCPConnector(resolver=resolver, use_dns_cache=False)
         
         # Suntikkan konektor bypass ke dalam HTTP Client Session milik bot
         self.http.connector = connector
 
-        # 2. Otomatis membaca dan memuat seluruh modul berkas perintah di folder cogs
+        # 2. HANYA MEMUAT 3 COMMAND COGS YANG DIINGINKAN USER
+        CILI_COMMANDS = ['image_ascii.py', 'text_banner.py', 'gif_ascii.py']
+        
         for filename in os.listdir('./cogs'):
-            if filename.endswith('.py'):
-                # Melewati utils/utility agar tidak ikut terdaftar sebagai command
-                if "util" in filename:
-                    continue
+            if filename in CILI_COMMANDS:
                 await self.load_extension(f'cogs.{filename[:-3]}')
         
         # 3. Sinkronisasi struktur Slash Command ke Discord
         await self.tree.sync()
-        print("🔀 Semua Modul Fitur ASCII Cog Berhasil Disinkronisasi via Bypass Connector!", flush=True)
+        print("🔀 3 Modul Inti ASCII Cog Berhasil Disinkronisasi via Bypass Connector!", flush=True)
 
 bot = BadakBypassBot()
 
@@ -66,24 +64,22 @@ class KustomWebHandler(BaseHTTPRequestHandler):
         html = (
             "<html><body style='background:#11111b; color:#a6e3a1; text-align:center; font-family:sans-serif; padding-top:10%;'>"
             "<h1>(ArS)CII Tao Engine Status: ACTIVE 24/7</h1>"
-            "<p style='color:#cdd6f4;'>Localhost Stream Canvas & GIF Generator is running smoothly.</p>"
+            "<p style='color:#cdd6f4;'>Localhost Stream Canvas & 3 Core Commands Core is running smoothly.</p>"
             "</body></html>"
         )
         self.wfile.write(bytes(html, "utf-8"))
 
-    # Menonaktifkan log terminal bawaan http.server agar konsol bersih dari spam request HF ping
     def log_message(self, format, *args):
         return
 
 def jalankan_server_palsu():
-    # Hugging Face Spaces mewajibkan aplikasi membuka port HTTP di angka 7860
     httpd = HTTPServer(('0.0.0.0', 7860), KustomWebHandler)
     print("🌍 Fake Web Server aktif mengamankan Port 7860 Hugging Face!", flush=True)
     httpd.serve_forever()
 
 
 # =====================================================================
-# LOGIKA STRATEGI RETRY REKONEKSI OTOMATIS GANGGUAN CLOUD
+# LOGIKA REKONEKSI AMAN DENGAN MEMBERSIHKAN SESI HTTP SEBELUMNYA
 # =====================================================================
 async def start_bot_dengan_retry():
     while True:
@@ -92,14 +88,22 @@ async def start_bot_dengan_retry():
             await bot.start(DISCORD_TOKEN)
         except Exception as e:
             print(f"⚠️ Gagal connect karena blokir/delay jaringan ({e}). Mengulang dalam 10 detik...", flush=True)
+            
+            # PEMBERSIHAN MEMORI RAM: Paksa tutup sesi HTTP lama agar tidak terjadi penumpukan Unclosed client session
+            if not bot.is_closed():
+                await bot.close()
+                
             await asyncio.sleep(10)
 
 async def main():
-    # Jalankan Fake Web Server di thread terpisah (background daemon)
     threading.Thread(target=jalankan_server_palsu, daemon=True).start()
     
-    async with bot:
+    # Menjalankan bot dengan pengawasan konteks async loop yang terisolasi secara rapi
+    try:
         await start_bot_dengan_retry()
+    except KeyboardInterrupt:
+        if not bot.is_closed():
+            await bot.close()
 
 if __name__ == "__main__":
     try:

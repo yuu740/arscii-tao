@@ -4,3 +4,5 @@ pyfiglet
 requests
 python-dotenv
 aiohttp
+aiodns
+brotli
