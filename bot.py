@@ -65,7 +65,7 @@ class KustomWebHandler(BaseHTTPRequestHandler):
         html = (
             "<html><body style='background:#11111b; color:#a6e3a1; text-align:center; font-family:sans-serif; padding-top:10%;'>"
             "<h1>(ArS)CII Tao Engine Status: ACTIVE 24/7</h1>"
-            "<p style='color:#cdd6f4;'>All Localhost Stream Canvas & Cryptography Modules are running smoothly.</p>
+            "<p style='color:#cdd6f4;'>All Localhost Stream Canvas & Cryptography Modules are running smoothly.</p>"
             "</body></html>"
         )
         self.wfile.write(bytes(html, "utf-8"))
