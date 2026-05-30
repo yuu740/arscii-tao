@@ -10,12 +10,12 @@ class ImageAscii(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    @app_commands.command(name="ascii_image", description="Ubah fotomu menjadi seni teks ASCII murni bergaya HD!")
-    @app_commands.describe(gambar="Lampirkan foto yang ingin kamu ubah")
+    @app_commands.command(name="ascii_image", description="Convert your photo into clean, high-density ASCII text art!")
+    @app_commands.describe(gambar="Attach the image you want to convert")
     async def ascii_image(self, interaction: discord.Interaction, gambar: discord.Attachment):
         await interaction.response.defer(ephemeral=False)
         if not gambar.content_type or not gambar.content_type.startswith("image/"):
-            await interaction.followup.send("❌ File harus berupa gambar!")
+            await interaction.followup.send("❌ Attached file must be a valid image!")
             return
 
         try:
@@ -35,7 +35,7 @@ class ImageAscii(commands.Cog):
             ascii_img = "\n".join(safe_lines)
             await interaction.followup.send(f"```\n{ascii_img}\n```")
         except Exception as e:
-            await interaction.followup.send(f"❌ Gagal memproses gambar. Error: {e}")
+            await interaction.followup.send(f"❌ Failed to process image. Error: {e}")
 
 async def setup(bot):
     await bot.add_cog(ImageAscii(bot))

@@ -8,7 +8,7 @@ class MatrixRain(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    @app_commands.command(name="ascii_matrix", description="Hasilkan animasi hujan kode digital bergerak ukuran besar (Unlimited Looping)!")
+    @app_commands.command(name="ascii_matrix", description="Generate a large-scale, indefinitely looping digital code rain animation styled after The Matrix!")
     async def ascii_matrix(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=False)
         

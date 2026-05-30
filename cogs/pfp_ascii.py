@@ -10,8 +10,8 @@ class PfpAscii(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    @app_commands.command(name="ascii_pfp", description="Ubah foto profil menjadi format teks ASCII Bergerak HD (Anti-Bug Nitro/Dekorasi)!")
-    @app_commands.describe(user="Pilih pengguna (Kosongkan jika ingin profil diri sendiri)")
+    @app_commands.command(name="ascii_pfp", description="Convert a profile avatar into ASCII format (Supports both static and Nitro GIFs)!")
+    @app_commands.describe(user="Select a user (Leave empty to process your own avatar)")
     async def ascii_pfp(self, interaction: discord.Interaction, user: discord.User = None):
         await interaction.response.defer(ephemeral=False)
         
@@ -53,7 +53,7 @@ class PfpAscii(commands.Cog):
 
                 gif_stream = create_gif_from_ascii_lines(all_frames_lines, w_chars, h_chars, bg_color="white", text_color="black")
                 file_discord = discord.File(fp=gif_stream, filename=f"pfp_animation_{target_user.name}.gif")
-                await interaction.followup.send(content=f"🎞️ Seni Avatar Teks Bergerak Berukuran Besar untuk **{target_user.name}**:", file=file_discord)
+                await interaction.followup.send(content=f"🎞️ Upscaled Animated ASCII Avatar Art for **{target_user.name}**:", file=file_discord)
                 
             else:
                 # JALUR 2: AKUN STATIS/FOTO BIASA (PNG)
@@ -72,7 +72,7 @@ class PfpAscii(commands.Cog):
                     curr_len += len(clean_line) + 1
                     
                 ascii_img = "\n".join(safe_lines)
-                await interaction.followup.send(content=f"👤 Seni Profil Teks ASCII untuk **{target_user.name}**:\n```\n{ascii_img}\n```")
+                await interaction.followup.send(content=f"👤 ASCII Avatar Text Art for **{target_user.name}**:\n```\n{ascii_img}\n```")
                 
         except Exception as e:
             # Skenario penyelamatan terakhir jika rute CDN mengalami kendala intermiten
@@ -92,9 +92,9 @@ class PfpAscii(commands.Cog):
                     curr_len += len(clean_line) + 1
                     
                 ascii_img = "\n".join(safe_lines)
-                await interaction.followup.send(content=f"👤 [Emergency Fallback] Seni Profil Teks ASCII untuk **{target_user.name}**:\n```\n{ascii_img}\n```")
+                await interaction.followup.send(content=f"👤 [Emergency Fallback] ASCII Avatar Text Art for **{target_user.name}**:\n```\n{ascii_img}\n```")
             except Exception as backup_err:
-                await interaction.followup.send(content=f"❌ Gagal total memproses gambar profil. Error: {e} | Fallback Error: {backup_err}")
+                await interaction.followup.send(content=f"❌ Failed completely to process avatar asset. Error: {e} | Fallback Error: {backup_err}")
 
 async def setup(bot):
     await bot.add_cog(PfpAscii(bot))

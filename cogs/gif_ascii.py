@@ -10,12 +10,12 @@ class GifAscii(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    @app_commands.command(name="ascii_gif", description="Ubah animasi GIF menjadi animasi GIF teks ASCII murni berukuran besar!")
-    @app_commands.describe(gif_file="Lampirkan file animasi GIF")
+    @app_commands.command(name="ascii_gif", description="Convert an animated GIF into an upscaled ASCII text art animation!")
+    @app_commands.describe(gif_file="Attach the animated GIF file")
     async def ascii_gif(self, interaction: discord.Interaction, gif_file: discord.Attachment):
         await interaction.response.defer(ephemeral=False)
         if not gif_file.content_type or "gif" not in gif_file.content_type:
-            await interaction.followup.send("❌ File wajib berformat animasi GIF!")
+            await interaction.followup.send("❌ File must be an animated GIF!")
             return
 
         try:
@@ -43,9 +43,9 @@ class GifAscii(commands.Cog):
             gif_stream = create_gif_from_ascii_lines(all_frames_lines, w_chars, h_chars, bg_color="white", text_color="black")
             file_discord = discord.File(fp=gif_stream, filename="animasi_ascii_large.gif")
             
-            await interaction.followup.send("✅ Animasi GIF Karakter Teks ASCII berukuran besar berhasil dibuat:", file=file_discord)
+            await interaction.followup.send("✅ Upscaled ASCII Character GIF generated successfully:", file=file_discord)
         except Exception as e:
-            await interaction.followup.send(f"❌ Gagal memproses animasi GIF. Error: {e}")
+            await interaction.followup.send(f"❌ Failed to process animated GIF. Error: {e}")
 
 async def setup(bot):
     await bot.add_cog(GifAscii(bot))
