@@ -5,4 +5,5 @@ requests
 python-dotenv
 aiohttp
 aiodns
+dnspython
 brotli
