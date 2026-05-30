@@ -10,7 +10,7 @@ class PfpAscii(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    @app_commands.command(name="ascii_pfp", description="Ubah foto profil menjadi format teks ASCII (100% Kebal Bug Nitro/Dekorasi)!")
+    @app_commands.command(name="ascii_pfp", description="Ubah foto profil menjadi format teks ASCII Bergerak HD (Anti-Bug Nitro/Dekorasi)!")
     @app_commands.describe(user="Pilih pengguna (Kosongkan jika ingin profil diri sendiri)")
     async def ascii_pfp(self, interaction: discord.Interaction, user: discord.User = None):
         await interaction.response.defer(ephemeral=False)
@@ -18,32 +18,21 @@ class PfpAscii(commands.Cog):
         # Deteksi profile server lokal jika tersedia
         target_user = interaction.guild.get_member(user.id) if (interaction.guild and user) else (user if user else interaction.user)
         
-        # --- STRATEGI DEBUG 1: Ambil data animasi dasar ---
-        is_animated_avatar = target_user.display_avatar.is_animated()
+        # Ambil aset dasar global (Bypass sistem dekorasi profil virtual server)
+        avatar_asset = target_user.avatar if target_user.avatar else target_user.default_avatar
         
-        # Bangun URL dasar. Jika terdeteksi animasi dari Discord, paksa rute ke format .gif murni
-        if is_animated_avatar:
-            pfp_url = str(target_user.display_avatar.replace(format="gif", size=256).url)
-        else:
-            pfp_url = str(target_user.display_avatar.replace(format="png", size=256).url)
-            
-        try:
-            # Unduh data biner dari Discord CDN
-            res = requests.get(pfp_url, timeout=10)
-            
-            # --- STRATEGI DEBUG 2: Cek tipe konten via Header HTTP (Bypass Pillow) ---
-            content_type = res.headers.get('Content-Type', '').lower()
-            
-            # Jika di header HTTP mengandung kata 'gif', kita anggap ini berkas animasi
-            is_gif_animation = "gif" in content_type or is_animated_avatar
+        # Periksa apakah jenis profilnya animasi melalui hash key Discord murni (Avatar bergerak pasti diawali huruf 'a_')
+        is_animated_file = avatar_asset.key.startswith("a_") if avatar_asset.key else False
 
-            image_bytes = io.BytesIO(res.content)
-            
-            # Membuka gambar menggunakan Pillow dalam blok pengaman
-            img = Image.open(image_bytes)
-            
-            if is_gif_animation:
-                # JALUR ANIMASI (GIF/WebP Bergerak)
+        try:
+            if is_animated_file:
+                # JALUR 1: AKUN NITRO ANIMASI BERGERAK MURNI
+                # Kita tembak endpoint aset CDN biner lama Discord. Rute ini dijamin 100% menghasilkan ekstensi .gif tradisional tanpa hibrida WebP
+                pfp_url = f"https://cdn.discordapp.com/avatars/{target_user.id}/{avatar_asset.key}.gif?size=256"
+                
+                res = requests.get(pfp_url, timeout=10)
+                img = Image.open(io.BytesIO(res.content))
+                
                 all_frames_lines = []
                 w_chars, h_chars = 0, 0
                 frame_count = 0
@@ -62,18 +51,17 @@ class PfpAscii(commands.Cog):
                 except EOFError:
                     pass
 
-                # Pastikan ada frame yang berhasil di-render
-                if not all_frames_lines:
-                    raise ValueError("Gagal mengekstrak frame dari avatar animasi.")
-
                 gif_stream = create_gif_from_ascii_lines(all_frames_lines, w_chars, h_chars, bg_color="white", text_color="black")
                 file_discord = discord.File(fp=gif_stream, filename=f"pfp_animation_{target_user.name}.gif")
                 await interaction.followup.send(content=f"🎞️ Seni Avatar Teks Bergerak Berukuran Besar untuk **{target_user.name}**:", file=file_discord)
                 
             else:
-                # JALUR STATIS (Gambar PNG/JPG Biasa)
-                lines = convert_to_text_ascii(img, target_width=65)
+                # JALUR 2: AKUN STATIS/FOTO BIASA (PNG)
+                pfp_url = str(avatar_asset.replace(format="png", size=256).url)
+                res = requests.get(pfp_url, timeout=10)
+                img = Image.open(io.BytesIO(res.content))
                 
+                lines = convert_to_text_ascii(img, target_width=65)
                 safe_lines = []
                 curr_len = 0
                 for line in lines:
@@ -87,10 +75,10 @@ class PfpAscii(commands.Cog):
                 await interaction.followup.send(content=f"👤 Seni Profil Teks ASCII untuk **{target_user.name}**:\n```\n{ascii_img}\n```")
                 
         except Exception as e:
-            # Jika skenario di atas masih gagal karena format hibrida aneh, gunakan emergency fallback (Paksa jadikan PNG statis)
+            # Skenario penyelamatan terakhir jika rute CDN mengalami kendala intermiten
             try:
-                emergency_url = str(target_user.display_avatar.replace(format="png", size=256).url)
-                res = requests.get(emergency_url, timeout=10)
+                fallback_url = str(target_user.display_avatar.replace(format="png", size=256).url)
+                res = requests.get(fallback_url, timeout=10)
                 img = Image.open(io.BytesIO(res.content))
                 lines = convert_to_text_ascii(img, target_width=65)
                 
@@ -105,8 +93,8 @@ class PfpAscii(commands.Cog):
                     
                 ascii_img = "\n".join(safe_lines)
                 await interaction.followup.send(content=f"👤 [Emergency Fallback] Seni Profil Teks ASCII untuk **{target_user.name}**:\n```\n{ascii_img}\n```")
-            except Exception as emergency_error:
-                await interaction.followup.send(content=f"❌ Gagal memproses data gambar profil. Error Utama: {e} | Emergency Error: {emergency_error}")
+            except Exception as backup_err:
+                await interaction.followup.send(content=f"❌ Gagal total memproses gambar profil. Error: {e} | Fallback Error: {backup_err}")
 
 async def setup(bot):
     await bot.add_cog(PfpAscii(bot))
